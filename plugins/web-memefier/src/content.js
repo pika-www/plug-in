@@ -12,6 +12,7 @@
   const ORIGINAL_SRCSET = `${EXT}-original-srcset`;
   const ORIGINAL_SIZES = `${EXT}-original-sizes`;
   const ORIGINAL_POSTER = `${EXT}-original-poster`;
+  const ORIGINAL_STYLE = `${EXT}-original-style`;
   const PROCESSED_TEXT = `${EXT}-text`;
   const PROCESSED_MEDIA = `${EXT}-media`;
   const MEME_SRC = `${EXT}-meme-src`;
@@ -43,9 +44,11 @@
   let state = { ...defaultState };
   let observer = null;
   let pendingFlush = false;
+  let pendingOverlayUpdate = false;
   const originalTextByNode = new WeakMap();
   const processedTextNodes = new Set();
   const processedMediaElements = new Set();
+  const overlaysByElement = new Map();
 
   const memeTemplates = [
     { bg: "#ffdd2d", fg: "#111111", accent: "#ff4d4d", emoji: "🤡", top: "我不到啊", bottom: "但是很有精神" },
@@ -166,7 +169,7 @@
           continue;
         }
 
-        if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
+        if (mutation.type === "childList" && hasRelevantAddedNodes(mutation.addedNodes)) {
           scheduleTransform();
           return;
         }
@@ -190,11 +193,14 @@
 
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["src", "srcset", "sizes", "poster"],
+      attributeFilter: ["src", "srcset", "sizes", "poster", "alt", "title", "aria-label"],
       childList: true,
       characterData: true,
       subtree: true
     });
+
+    window.addEventListener("scroll", scheduleOverlayUpdate, true);
+    window.addEventListener("resize", scheduleOverlayUpdate, { passive: true });
   }
 
   function disableObserver() {
@@ -204,6 +210,8 @@
 
     observer.disconnect();
     observer = null;
+    window.removeEventListener("scroll", scheduleOverlayUpdate, true);
+    window.removeEventListener("resize", scheduleOverlayUpdate);
   }
 
   function scheduleTransform() {
@@ -246,70 +254,66 @@
   }
 
   function transformMedia(root) {
-    const mediaNodes = collectElements(root, "img, picture source, video[poster]");
+    const mediaNodes = collectElements(root, "img, video[poster]");
     for (const element of mediaNodes) {
       if (shouldSkipElement(element)) {
         continue;
       }
 
-      if (element.matches("source")) {
-        transformSource(element);
-      } else if (element.matches("video[poster]")) {
-        transformPoster(element);
-      } else if (element.matches("img")) {
-        transformImage(element);
-      }
+      transformVisualMedia(element);
     }
+
+    scheduleOverlayUpdate();
   }
 
-  function transformImage(img) {
-    if (!img.hasAttribute(ORIGINAL_SRC)) {
-      img.setAttribute(ORIGINAL_SRC, img.getAttribute("src") || "");
+  function transformVisualMedia(element) {
+    if (!element.hasAttribute(ORIGINAL_STYLE)) {
+      element.setAttribute(ORIGINAL_STYLE, element.getAttribute("style") || "");
     }
 
-    if (!img.hasAttribute(ORIGINAL_SRCSET)) {
-      img.setAttribute(ORIGINAL_SRCSET, img.getAttribute("srcset") || "");
+    if (!element.hasAttribute(ORIGINAL_SRC)) {
+      element.setAttribute(ORIGINAL_SRC, element.getAttribute("src") || "");
     }
 
-    if (!img.hasAttribute(ORIGINAL_SIZES)) {
-      img.setAttribute(ORIGINAL_SIZES, img.getAttribute("sizes") || "");
+    if (!element.hasAttribute(ORIGINAL_SRCSET)) {
+      element.setAttribute(ORIGINAL_SRCSET, element.getAttribute("srcset") || "");
     }
 
-    const memeSrc = getMemeSrc(img);
-    setAttributeIfChanged(img, "srcset", "");
-    setAttributeIfChanged(img, "sizes", "");
-    if (img.getAttribute("src") !== memeSrc) {
-      img.src = memeSrc;
+    if (!element.hasAttribute(ORIGINAL_SIZES)) {
+      element.setAttribute(ORIGINAL_SIZES, element.getAttribute("sizes") || "");
     }
-    setAttributeIfChanged(img, MEME_SRC, memeSrc);
-    img.setAttribute(PROCESSED_MEDIA, "1");
-    img.classList.add("web-memefier-image");
-    processedMediaElements.add(img);
+
+    if (!element.hasAttribute(ORIGINAL_POSTER)) {
+      element.setAttribute(ORIGINAL_POSTER, element.getAttribute("poster") || "");
+    }
+
+    const meme = getMediaMeme(element);
+    element.style.setProperty("--web-memefier-hue", `${meme.hue}deg`);
+    element.style.setProperty("--web-memefier-saturate", meme.saturate);
+    element.style.setProperty("--web-memefier-contrast", meme.contrast);
+    element.classList.add("web-memefier-image");
+    setAttributeIfChanged(element, MEME_SRC, String(meme.index));
+    element.setAttribute(PROCESSED_MEDIA, "1");
+    processedMediaElements.add(element);
+    upsertOverlay(element, meme);
   }
 
-  function transformSource(source) {
-    if (!source.hasAttribute(ORIGINAL_SRCSET)) {
-      source.setAttribute(ORIGINAL_SRCSET, source.getAttribute("srcset") || "");
+  function upsertOverlay(element, meme) {
+    const root = getOverlayRoot();
+    let overlay = overlaysByElement.get(element);
+
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.className = "web-memefier-media-overlay";
+      overlay.setAttribute("aria-hidden", "true");
+      overlaysByElement.set(element, overlay);
+      root.append(overlay);
     }
 
-    const memeSrc = getMemeSrc(source);
-    setAttributeIfChanged(source, "srcset", memeSrc);
-    setAttributeIfChanged(source, MEME_SRC, memeSrc);
-    source.setAttribute(PROCESSED_MEDIA, "1");
-    processedMediaElements.add(source);
-  }
-
-  function transformPoster(video) {
-    if (!video.hasAttribute(ORIGINAL_POSTER)) {
-      video.setAttribute(ORIGINAL_POSTER, video.getAttribute("poster") || "");
-    }
-
-    const memeSrc = getMemeSrc(video);
-    setAttributeIfChanged(video, "poster", memeSrc);
-    setAttributeIfChanged(video, MEME_SRC, memeSrc);
-    video.setAttribute(PROCESSED_MEDIA, "1");
-    video.classList.add("web-memefier-image");
-    processedMediaElements.add(video);
+    overlay.textContent = `${meme.emoji} ${meme.caption}`;
+    overlay.style.setProperty("--web-memefier-overlay-bg", meme.bg);
+    overlay.style.setProperty("--web-memefier-overlay-fg", meme.fg);
+    updateOverlayPosition(element, overlay);
   }
 
   function restoreMedia(root) {
@@ -319,21 +323,21 @@
     ]);
 
     for (const element of mediaNodes) {
-      if (element.matches("img")) {
-        restoreAttribute(element, "src", ORIGINAL_SRC);
-        restoreAttribute(element, "srcset", ORIGINAL_SRCSET);
-        restoreAttribute(element, "sizes", ORIGINAL_SIZES);
-        element.classList.remove("web-memefier-image");
-      } else if (element.matches("source")) {
-        restoreAttribute(element, "srcset", ORIGINAL_SRCSET);
-      } else if (element.matches("video")) {
-        restoreAttribute(element, "poster", ORIGINAL_POSTER);
-        element.classList.remove("web-memefier-image");
-      }
+      restoreOriginalStyle(element);
+      element.classList.remove("web-memefier-image");
 
       element.removeAttribute(PROCESSED_MEDIA);
       element.removeAttribute(MEME_SRC);
+      element.removeAttribute(ORIGINAL_SRC);
+      element.removeAttribute(ORIGINAL_SRCSET);
+      element.removeAttribute(ORIGINAL_SIZES);
+      element.removeAttribute(ORIGINAL_POSTER);
       processedMediaElements.delete(element);
+      removeOverlay(element);
+    }
+
+    if (overlaysByElement.size === 0) {
+      document.getElementById(ROOT_ID)?.remove();
     }
   }
 
@@ -388,11 +392,64 @@
   }
 
   function shouldTransformText(text) {
-    return /[的了]/.test(text);
+    return /[\p{L}\p{N}]/u.test(text);
   }
 
   function abstractText(text) {
-    return text.replace(/的/g, "🉐").replace(/了/g, "辣");
+    if (!text.trim()) {
+      return text;
+    }
+
+    const leading = text.match(/^\s*/)?.[0] || "";
+    const trailing = text.match(/\s*$/)?.[0] || "";
+    const core = text.slice(leading.length, text.length - trailing.length);
+    const transformed = abstractCoreText(core);
+    return `${leading}${transformed}${trailing}`;
+  }
+
+  function abstractCoreText(text) {
+    const hasHan = /\p{Script=Han}/u.test(text);
+    const hasLatin = /\p{Script=Latin}/u.test(text);
+    const suffixes = ["（绷）", " 🤌", "，家人们", "，抽象拉满", "，这很难评", "，尊嘟假嘟"];
+    const suffix = suffixes[Math.abs(hash(`${state.seed}:${text}`)) % suffixes.length];
+
+    let transformed = text
+      .replace(/的/g, "🉐")
+      .replace(/了/g, "辣")
+      .replace(/是/g, "系")
+      .replace(/我/g, "俺")
+      .replace(/你/g, "老铁")
+      .replace(/很/g, "尊嘟")
+      .replace(/真/g, "顶真")
+      .replace(/不/g, "8")
+      .replace(/吗/g, "咩")
+      .replace(/啊/g, "嗷")
+      .replace(/吧/g, "叭")
+      .replace(/和/g, "+")
+      .replace(/与/g, "+");
+
+    if (hasLatin) {
+      transformed = transformed
+        .replace(/\bthe\b/gi, "teh")
+        .replace(/\bvery\b/gi, "mega")
+        .replace(/\bnew\b/gi, "fresh")
+        .replace(/\bnews\b/gi, "瓜")
+        .replace(/\bupdate\b/gi, "赛博更新");
+    }
+
+    if (hasHan) {
+      transformed = transformed.replace(/([。！？!?])$/u, `${suffix}$1`);
+      if (transformed === text || !/[。！？!?]$/u.test(transformed)) {
+        transformed = `${transformed}${suffix}`;
+      }
+      return transformed;
+    }
+
+    if (hasLatin) {
+      return `赛博 ${transformed} ${suffix}`.replace(/\s+/g, " ");
+    }
+
+    return `${transformed}${suffix}`;
   }
 
   function collectElements(root, selector) {
@@ -416,6 +473,20 @@
 
     if (root instanceof DocumentFragment || root instanceof Element) {
       return root.contains(node);
+    }
+
+    return false;
+  }
+
+  function hasRelevantAddedNodes(nodes) {
+    for (const node of nodes) {
+      if (node instanceof Element && !isOwnedElement(node)) {
+        return true;
+      }
+
+      if (node instanceof Text && shouldTransformText(node.nodeValue || "")) {
+        return true;
+      }
     }
 
     return false;
@@ -460,6 +531,20 @@
     element.removeAttribute(backupAttribute);
   }
 
+  function restoreOriginalStyle(element) {
+    if (!element.hasAttribute(ORIGINAL_STYLE)) {
+      return;
+    }
+
+    const originalStyle = element.getAttribute(ORIGINAL_STYLE) || "";
+    if (originalStyle) {
+      element.setAttribute("style", originalStyle);
+    } else {
+      element.removeAttribute("style");
+    }
+    element.removeAttribute(ORIGINAL_STYLE);
+  }
+
   function setAttributeIfChanged(element, attribute, value) {
     if (value) {
       if (element.getAttribute(attribute) !== value) {
@@ -486,6 +571,123 @@
     }
 
     return chrome.runtime.getURL(`assets/memes/meme-${String(index + 1).padStart(2, "0")}.svg`);
+  }
+
+  function getMediaMeme(element) {
+    const label = getMediaLabel(element);
+    const index = stableIndexForElement(element, memeTemplates.length);
+    const template = memeTemplates[index];
+    const topic = getTopicFromLabel(label);
+
+    return {
+      ...template,
+      index,
+      hue: Math.abs(hash(`${state.seed}:hue:${label}`)) % 42 - 21,
+      saturate: String(1.18 + (Math.abs(hash(`${state.seed}:sat:${label}`)) % 34) / 100),
+      contrast: String(1.05 + (Math.abs(hash(`${state.seed}:contrast:${label}`)) % 18) / 100),
+      caption: `${topic}${getMemeVerdict(label)}`
+    };
+  }
+
+  function getMediaLabel(element) {
+    const rawLabel = [
+      element.getAttribute("alt"),
+      element.getAttribute("title"),
+      element.getAttribute("aria-label"),
+      element.getAttribute("src"),
+      element.getAttribute("poster"),
+      element.currentSrc
+    ].filter(Boolean).join(" ");
+
+    return rawLabel || element.outerHTML.slice(0, 160);
+  }
+
+  function getTopicFromLabel(label) {
+    const normalized = label.toLowerCase();
+    if (/avatar|profile|user|face|head|人物|头像|用户/.test(normalized)) {
+      return "头像有点东西";
+    }
+    if (/logo|brand|icon|标志|品牌|图标/.test(normalized)) {
+      return "品牌突然抽象";
+    }
+    if (/banner|hero|cover|背景|封面|横幅/.test(normalized)) {
+      return "封面开始整活";
+    }
+    if (/product|goods|item|商品|产品/.test(normalized)) {
+      return "商品图绷不住";
+    }
+    if (/chart|graph|report|数据|图表|报告/.test(normalized)) {
+      return "数据开始发癫";
+    }
+    return "这图被梗化";
+  }
+
+  function getMemeVerdict(label) {
+    const verdicts = ["，鉴定为顶真", "，抽象指数拉满", "，家人们细品", "，节目效果来了", "，这合理吗"];
+    return verdicts[Math.abs(hash(`${state.seed}:verdict:${label}`)) % verdicts.length];
+  }
+
+  function getOverlayRoot() {
+    let root = document.getElementById(ROOT_ID);
+    if (root) {
+      return root;
+    }
+
+    root = document.createElement("div");
+    root.id = ROOT_ID;
+    root.setAttribute("aria-hidden", "true");
+    document.documentElement.append(root);
+    return root;
+  }
+
+  function removeOverlay(element) {
+    const overlay = overlaysByElement.get(element);
+    if (!overlay) {
+      return;
+    }
+
+    overlay.remove();
+    overlaysByElement.delete(element);
+  }
+
+  function scheduleOverlayUpdate() {
+    if (pendingOverlayUpdate) {
+      return;
+    }
+
+    pendingOverlayUpdate = true;
+    window.requestAnimationFrame(() => {
+      pendingOverlayUpdate = false;
+      updateAllOverlays();
+    });
+  }
+
+  function updateAllOverlays() {
+    for (const [element, overlay] of overlaysByElement) {
+      if (!element.isConnected) {
+        overlay.remove();
+        overlaysByElement.delete(element);
+        processedMediaElements.delete(element);
+        continue;
+      }
+
+      updateOverlayPosition(element, overlay);
+    }
+  }
+
+  function updateOverlayPosition(element, overlay) {
+    const rect = element.getBoundingClientRect();
+    const visible = rect.width >= 36 && rect.height >= 28 && rect.bottom > 0 && rect.right > 0 && rect.top < window.innerHeight && rect.left < window.innerWidth;
+
+    overlay.hidden = !visible;
+    if (!visible) {
+      return;
+    }
+
+    overlay.style.left = `${Math.max(4, rect.left + 6)}px`;
+    overlay.style.top = `${Math.max(4, rect.top + 6)}px`;
+    overlay.style.maxWidth = `${Math.max(32, Math.min(rect.width - 12, 240))}px`;
+    overlay.style.fontSize = `${Math.max(11, Math.min(15, Math.round(rect.width / 16)))}px`;
   }
 
   function stableIndexForElement(element, size) {
@@ -542,8 +744,33 @@
     style.id = STYLE_ID;
     style.textContent = `
       .web-memefier-image {
-        object-fit: cover !important;
-        background: #111 !important;
+        filter: saturate(var(--web-memefier-saturate, 1.28)) contrast(var(--web-memefier-contrast, 1.08)) hue-rotate(var(--web-memefier-hue, 0deg)) !important;
+      }
+
+      #${ROOT_ID} {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483646;
+        pointer-events: none;
+      }
+
+      .web-memefier-media-overlay {
+        position: fixed;
+        display: block;
+        box-sizing: border-box;
+        padding: 4px 7px;
+        border: 1px solid rgba(0, 0, 0, 0.82);
+        border-radius: 6px;
+        color: var(--web-memefier-overlay-fg, #111);
+        background: var(--web-memefier-overlay-bg, #ffdd2d);
+        box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.84);
+        font-family: Arial, 'Microsoft YaHei', sans-serif;
+        font-weight: 800;
+        line-height: 1.25;
+        letter-spacing: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
     `;
     document.documentElement.append(style);

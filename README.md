@@ -4,7 +4,7 @@
 
 ## 插件列表
 
-- [网页梗化器](plugins/web-memefier/README.md)：一键把网页图片替换成随机表情包，并把部分中文文字抽象化。
+- [网页梗化器](plugins/web-memefier/README.md)：一键给网页图片叠加梗化贴纸，并把页面文字抽象化。
 
 ## 目录约定
 
