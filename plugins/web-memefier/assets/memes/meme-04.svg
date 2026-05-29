@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420">
+  <rect width="640" height="420" rx="28" fill="#7c3aed"/>
+  <circle cx="520" cy="86" r="58" fill="#facc15" opacity="0.9"/>
+  <circle cx="116" cy="333" r="74" fill="#facc15" opacity="0.32"/>
+  <text x="320" y="126" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="52" font-weight="800" fill="#ffffff">严肃内容</text>
+  <text x="320" y="238" text-anchor="middle" font-family="Apple Color Emoji, Segoe UI Emoji, sans-serif" font-size="104">🧐</text>
+  <text x="320" y="340" text-anchor="middle" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="46" font-weight="800" fill="#ffffff">正在梗化中</text>
+  <text x="604" y="390" text-anchor="end" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#ffffff" opacity="0.58">#4</text>
+</svg>

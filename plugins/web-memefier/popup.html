@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>网页梗化器</title>
+    <link rel="stylesheet" href="src/popup.css">
+  </head>
+  <body>
+    <main class="panel">
+      <header class="header">
+        <div class="brand-mark" aria-hidden="true">🉐</div>
+        <div>
+          <h1>网页梗化器</h1>
+          <p id="statusText">读取当前页面状态...</p>
+        </div>
+      </header>
+
+      <section class="controls" aria-label="梗化控制">
+        <button id="toggleButton" class="button button-primary" type="button">
+          开启梗化
+        </button>
+        <button id="rerollButton" class="button" type="button">
+          重新随机
+        </button>
+        <button id="restoreButton" class="button" type="button">
+          恢复网页
+        </button>
+      </section>
+
+      <section class="options" aria-label="梗化选项">
+        <label class="switch-row">
+          <span>替换图片</span>
+          <input id="imagesToggle" type="checkbox" checked>
+        </label>
+        <label class="switch-row">
+          <span>抽象文字</span>
+          <input id="textToggle" type="checkbox" checked>
+        </label>
+      </section>
+
+      <p id="hint" class="hint">支持多数普通网页，刷新页面可完全还原。</p>
+    </main>
+
+    <script src="src/popup.js"></script>
+  </body>
+</html>

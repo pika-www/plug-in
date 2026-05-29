@@ -1,0 +1,9 @@
+{
+  "name": "plug-in",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "check": "npm --prefix plugins/web-memefier run check",
+    "test": "npm --prefix plugins/web-memefier run test:extension"
+  }
+}

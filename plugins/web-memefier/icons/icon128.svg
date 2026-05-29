@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect x="10" y="10" width="108" height="108" rx="22" fill="#ffcf23" stroke="#111827" stroke-width="8"/>
+  <circle cx="96" cy="30" r="16" fill="#db2777"/>
+  <text x="64" y="86" text-anchor="middle" font-size="68" font-family="Arial, sans-serif" font-weight="800" fill="#111827">梗</text>
+</svg>
